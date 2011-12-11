@@ -1,6 +1,13 @@
-/* libunaccept - Adds simple network-based ACLs to the accept call, via
- *               LD_PRELOAD.
- * */
+/* libunaccept - Add IP/DNS ACLs to the accept call (activate via LD_PRELOAD).
+** Copyright 2011, Bjarni R. Einarsson <http://bre.klaki.net/>
+*
+* This program is free software: you can redistribute it and/or modify it under
+* the terms of the  GNU  Affero General Public License as published by the Free
+* Software Foundation, either version 3 of the License, or (at your option) any
+* later version.
+*
+* See the file COPYING for details.
+*******************************************************************************/
 #ifndef RTLD_NEXT
 #  define _GNU_SOURCE
 #endif
