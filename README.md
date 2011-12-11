@@ -77,9 +77,9 @@ Which file it loads depends on the port being listend on and the value of the
 For example, assuming we are protecting a service listening on port 25, the
 files checked would be, in order of preference:
 
-   1. `$LIBUANCCEPT_RULES/port_25.rc`
-   2. `$LIBUANCCEPT_RULES/default.rc`
-   3. `$LIBUANCCEPT_RULES`
+   1. `$LIBUNACCEPT_RULES/port_25.rc`
+   2. `$LIBUNACCEPT_RULES/default.rc`
+   3. `$LIBUNACCEPT_RULES`
 
 Note that only one of these files is ever used at a time, the first match
 wins.  The third option only applies if the `LIBUNACCEPT_RULES` points to a
