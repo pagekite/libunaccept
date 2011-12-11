@@ -8,12 +8,14 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <string.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <strings.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
+#include <syslog.h>
 #include <netinet/tcp.h>
 #include <netinet/in.h>
 #include <netdb.h>
@@ -30,6 +32,7 @@ static void _libunaccept_configure(void) __attribute__((constructor));
 int (*lua_libc_accept)(int s, struct sockaddr *, socklen_t *);
 int lua_configured = 0;
 int lua_blocking = 0;
+int lua_syslog = 0;
 
 /* Rules variables */
 int LUA_MAX_RULES = 100;
@@ -47,6 +50,20 @@ time_t lua_rules_mtime = 0;
 int LUA_TARPIT_SIZE = 100;
 int *lua_tarpit = NULL;
 int lua_num_tarpit = 0;
+
+
+int _libunaccept_log(int priority, const char *format, ...)
+{
+  va_list args;
+  va_start(args, format);
+  if (lua_syslog) {
+    vsyslog(priority, format, args);
+  } else {
+    vfprintf(stderr, format, args);
+    fprintf(stderr, "\n");
+  }
+  va_end(args);
+}
 
 int _libunaccept_resize_tarpit(int size)
 {
@@ -111,8 +128,9 @@ static void _libunaccept_configure()
 
   if ((NULL == (c = getenv("UNACCEPT_RULES"))) || (*c == '\0'))
   {
-    fprintf(stderr, "libunaccept: WARNING: UNACCEPT_RULES unset, using %s!\n", 
-                    lua_rulefile);
+    _libunaccept_log(LOG_NOTICE,
+                     "libunaccept: Note, UNACCEPT_RULES unset, using %s!",
+                     lua_rulefile);
   }
   else
   {
@@ -126,7 +144,8 @@ static void _libunaccept_configure()
   {
     if (sscanf(c, "%d", &LUA_TARPIT_SIZE) != 1)
     {
-      fprintf(stderr, "libunaccept: fatal: Bad UNACCEPT_TARPIT_SIZE: %s\n", c);
+      _libunaccept_log(LOG_ERR,
+                       "libunaccept: fatal: Bad UNACCEPT_TARPIT_SIZE: %s", c);
       exit(1);
     }
   }
@@ -135,7 +154,8 @@ static void _libunaccept_configure()
   *(void **)(&lua_libc_accept) = dlsym(RTLD_NEXT, "accept");
   if (dlerror())
   {
-    fprintf(stderr, "libunaccept: fatal: Couldn't find original accept()!\n");
+    _libunaccept_log(LOG_ERR,
+                     "libunaccept: fatal: Couldn't find original accept()!\n");
     exit(1);
   }
 
@@ -179,8 +199,9 @@ void _libunaccept_load_rules()
 
   if (stat(lua_rulefile, &filestat) < 0)
   {
-    fprintf(stderr, "libunaccept: failed to stat(%s): ", lua_rulefile);
-    perror(NULL);
+    _libunaccept_log(LOG_WARNING,
+                     "libunaccept: failed to stat(%s): %s",
+                     lua_rulefile, strerror(errno));
     lua_num_rules = 0;
     return;
   }
@@ -200,7 +221,7 @@ void _libunaccept_load_rules()
     /* Resize the rules DB to roughly match the size of the config file.
      *
      * Magic number: 11 is the number of characters in "denyhost a\n",
-     * which is the shortest possible rule at the moment. 
+     * which is the shortest possible rule at the moment.
      */
     if (!_libunaccept_resize_rules(filestat.st_size / 11))
       return;
@@ -225,6 +246,12 @@ void _libunaccept_load_rules()
           lua_blocking = value;
           continue;
         }
+        else if (0 == strcasecmp(first, "syslog") &&
+                 ((value = strtol(second, NULL, 10)) || (!errno)))
+        {
+          lua_syslog = value;
+          continue;
+        }
         else if ((value = _libunaccept_strtopolicy(first)) & BY_HOST)
         {
           if (lua_rules[lua_num_rules].hostname = malloc(1+strlen(second)))
@@ -238,8 +265,9 @@ void _libunaccept_load_rules()
       {
         if (lua_num_rules >= LUA_MAX_RULES)
         {
-          fprintf(stderr, "libunaccept: Line %d, too many rules!  Max is %d.\n",
-                  lines, LUA_MAX_RULES);
+          _libunaccept_log(LOG_WARNING,
+                           "libunaccept: Line %d, too many rules!  Max is %d.",
+                           lines, LUA_MAX_RULES);
           fclose(fd);
           return;
         }
@@ -257,19 +285,22 @@ void _libunaccept_load_rules()
 
       if (num_rules_last == lua_num_rules)
       {
-        fprintf(stderr, "libunaccept: Line %d, invalid rule: %s", lines, line);
+        _libunaccept_log(LOG_WARNING,
+                         "libunaccept: Line %d, invalid rule: %s", lines, line);
       }
     }
     fclose(fd);
     lua_rules_mtime = filestat.st_mtime;
   }
+
+  _libunaccept_log(LOG_NOTICE, "libunaccept: configured from %s", lua_rulefile);
 }
 
 int accept(int s, struct sockaddr *addr, socklen_t *addrlen)
 {
   struct sockaddr_in *sin;
   struct hostent *hinfo;
-  struct hostent nullinfo;
+  struct hostent nullinfo, unsetinfo;
   char *addr_str;
   int res;
   int match;
@@ -279,6 +310,7 @@ int accept(int s, struct sockaddr *addr, socklen_t *addrlen)
   if (!lua_configured) _libunaccept_configure();
 
   nullinfo.h_name = "no-reverse-dns";
+  unsetinfo.h_name = "<unset>";
   do
   {
     _libunaccept_load_rules();
@@ -288,7 +320,7 @@ int accept(int s, struct sockaddr *addr, socklen_t *addrlen)
     if ((res <= 0) || (lua_num_rules < 1) || (addr->sa_family != AF_INET))
       return res;
 
-    hinfo = &nullinfo;
+    hinfo = &unsetinfo;
     got_hinfo = 0;
     for (i = 0; i < lua_num_rules; i++)
     {
@@ -300,7 +332,7 @@ int accept(int s, struct sockaddr *addr, socklen_t *addrlen)
         if (!got_hinfo)
         {
           got_hinfo++;
-          hinfo = gethostbyaddr(&sin->sin_addr.s_addr, 
+          hinfo = gethostbyaddr(&sin->sin_addr.s_addr,
                                 sizeof(sin->sin_addr.s_addr), AF_INET);
           if (hinfo == NULL)
             hinfo = &nullinfo;
@@ -316,19 +348,18 @@ int accept(int s, struct sockaddr *addr, socklen_t *addrlen)
       {
         if (lua_rules[i].policy & ALLOW)
         {
-          if (lua_rules[i].policy & VERBOSE)
-            fprintf(stderr,
-                    "libunaccept: Connect from %s allowed, rule %d.\n",
-                    inet_ntoa(sin->sin_addr.s_addr), i);
+          if ((lua_rules[i].policy & VERBOSE) || (lua_syslog > 1))
+            _libunaccept_log(LOG_INFO,
+                             "libunaccept: Connect from %s/%s allowed, rule %d.",
+                             inet_ntoa(sin->sin_addr.s_addr), hinfo->h_name, i);
           break;
         }
         else if (lua_rules[i].policy & DENY)
         {
-          if (lua_rules[i].policy & VERBOSE)
-            fprintf(stderr,
-                    "libunaccept: Connect from %s denied, rule %d.\n",
-                    inet_ntoa(sin->sin_addr.s_addr), i);
-
+          if ((lua_rules[i].policy & VERBOSE) || (lua_syslog > 1))
+            _libunaccept_log(LOG_INFO,
+                             "libunaccept: Connect from %s/%s denied, rule %d.",
+                             inet_ntoa(sin->sin_addr.s_addr), hinfo->h_name, i);
           close(res);
           errno = ECONNABORTED;
           res = -1;
@@ -336,10 +367,10 @@ int accept(int s, struct sockaddr *addr, socklen_t *addrlen)
         }
         else if (lua_rules[i].policy & TARPIT)
         {
-          if (lua_rules[i].policy & VERBOSE)
-            fprintf(stderr,
-                    "libunaccept: Connect from %s tarpitted, rule %d.\n",
-                    inet_ntoa(sin->sin_addr.s_addr), i);
+          if ((lua_rules[i].policy & VERBOSE) || (lua_syslog > 1))
+            _libunaccept_log(LOG_INFO,
+                             "libunaccept: Connect from %s/%s tarpitted, rule %d.",
+                             inet_ntoa(sin->sin_addr.s_addr), hinfo->h_name, i);
 
           /* Tarpitting is simple: we just keep up to LUA_TARPIT_SIZE
            * victims open at a time, but otherwise ignore them. */

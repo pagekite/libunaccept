@@ -1,6 +1,4 @@
 TODO for world:
- - Log to syslog
- - Open source this thing?
  - Add HTTP redirection feature?
  - Add more evil SMTP tarpitting?
 

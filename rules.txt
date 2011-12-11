@@ -3,6 +3,7 @@
 # Basic configuration...
 tarpit_size 10
 blocking 1
+syslog 1
 #
 # Rules are evaluated in-order until one matches.  Default (fall through)
 # behavior is to accept connections.
