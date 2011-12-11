@@ -82,10 +82,10 @@ files checked would be, in order of preference:
    3. `$LIBUNACCEPT_RULES`
 
 Note that only one of these files is ever used at a time, the first match
-wins.  The third option only applies if the `LIBUNACCEPT_RULES` points to a
-file, the other two are attempted if it points to a directory.
+wins.  The third option only applies if `LIBUNACCEPT_RULES` points to a file,
+the other two are attempted if it points to a directory.
 
-Also note that `Libunaccept` will cache the parsed policy in RAM and will
+Also note that `libunaccept` will cache the parsed policy in RAM and will
 only re-parse if the file modification time changes.  This of course only
 helps if the `accept()` call takes place in a long-lived process.
 
@@ -105,7 +105,7 @@ policies are:
 In addition, policies can have modifiers:
 
    * `verbose` logs all matches to syslog
-   * `host` applie this rule to host-names instead of IP addresses
+   * `host` apply this rule to host-names instead of IP addresses
 
 Conditions are either host names fragments or IPv4 addresses and subnet masks
 in dotted quad notation.
