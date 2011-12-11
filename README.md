@@ -55,11 +55,11 @@ files from.
 
 `Libunaccept` recognizes the following environment variables:
 
-   LIBUNACCEPT_RULES=/etc/libunaccept.d
+    LIBUNACCEPT_RULES=/etc/libunaccept.d
 
-   LIBUNACCEPT_OPENLOG=        # provide a name to explicitly open syslog
-   LIBUNACCEPT_BLOCKING=0      # or 1 to enable blocking mode
-   LIBUNACCEPT_TARPIT_SIZE=100 # max number of connections to keep hanging
+    LIBUNACCEPT_OPENLOG=        # provide a name to explicitly open syslog
+    LIBUNACCEPT_BLOCKING=0      # or 1 to enable blocking mode
+    LIBUNACCEPT_TARPIT_SIZE=100 # max number of connections to keep hanging
 
 Default values for each variable are shown above.
 
