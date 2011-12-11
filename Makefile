@@ -11,6 +11,11 @@ default: libunaccept.so
 
 install: libunaccept.so
 	install -s libunaccept.so /usr/local/lib
+	mkdir -p /etc/libunaccept.d
+	touch /etc/libunaccept.d/default.rc
+
+uninstall:
+	rm -f /usr/local/lib/libunaccept.so
 
 clean:
 	rm -f *.so *.o

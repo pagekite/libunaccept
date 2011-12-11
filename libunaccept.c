@@ -43,7 +43,7 @@ struct lua_rule {
   char *hostname;
 } *lua_rules;
 int lua_num_rules = 0;
-char *lua_rulefile = "/etc/libunaccept.rc";
+char *lua_config = "/etc/libunaccept.d";
 time_t lua_rules_mtime = 0;
 
 /* Tarpitting variables*/
@@ -134,11 +134,11 @@ static void _libunaccept_configure()
   {
     _libunaccept_log(LOG_NOTICE,
                      "libunaccept: warning: UNACCEPT_RULES unset, using %s!",
-                     lua_rulefile);
+                     lua_config);
   }
   else
   {
-    lua_rulefile = c;
+    lua_config = c;
   }
 
   if (NULL != (c = getenv("UNACCEPT_BLOCKING")))
@@ -192,7 +192,7 @@ int _libunaccept_strtopolicy(char *s)
 void _libunaccept_load_rules(unsigned short port)
 {
   FILE *fd;
-  char fn[80], line[80], first[80], second[80], third[80], fourth[80];
+  char fn[1024], line[80], first[80], second[80], third[80], fourth[80];
   struct in_addr network;
   struct in_addr netmask;
   struct stat filestat;
@@ -201,24 +201,41 @@ void _libunaccept_load_rules(unsigned short port)
   int value;
   int num_rules_last = 0;
 
-  /* Try the default rc file with -NN appended first... */
-  snprintf(fn, 79, "%s.%hu", lua_rulefile, port);
-  if (stat(fn, &filestat) < 0)
+  /* Make sure our rulefile or ruledir exists */
+  if (stat(lua_config, &filestat) < 0)
   {
     _libunaccept_log(LOG_WARNING,
                      "libunaccept: failed to stat(%s): %s",
                      fn, strerror(errno));
+    lua_num_rules = 0;
+    return;
+  }
 
-    /* If that fails, just try the default rc file */
-    strcpy(fn, lua_rulefile);
+  /* If it is a directory, go looking for a usable config file. */
+  fn[sizeof(fn)-1] = '\0';
+  if (S_ISDIR(filestat.st_mode))
+  {
+    /* First, look for a file named port_<PORTNUM>.rc */
+    snprintf(fn, sizeof(fn)-1, "%s/port_%hu.rc", lua_config, port);
+
+    if (stat(fn, &filestat) < 0)
+      /* If it does not exist, look for default.rc */
+      snprintf(fn, sizeof(fn)-1, "%s/default.rc", lua_config);
+
     if (stat(fn, &filestat) < 0)
     {
+      /* If it still does not exist, just panic. */
       _libunaccept_log(LOG_WARNING,
                        "libunaccept: failed to stat(%s): %s",
                        fn, strerror(errno));
       lua_num_rules = 0;
       return;
     }
+  }
+  else
+  {
+    /* Otherwise, treat the lua_config as a file. */
+    strncpy(fn, lua_config, sizeof(fn)-1);
   }
 
   /* Short circuit if nothing has changed. */

@@ -1,5 +1,5 @@
 #!/bin/bash
-export UNACCEPT_RULES=rules.txt
+export UNACCEPT_RULES=config.d
 export UNACCEPT_BLOCKING=1
 export UNACCEPT_MAX_RULES=4
 export UNACCEPT_TARPIT_SIZE=100000
