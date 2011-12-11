@@ -158,6 +158,9 @@ static void _libunaccept_configure()
   if (NULL != (c = getenv("LIBUNACCEPT_BLOCKING")))
     _LIBUNACCEPT_BLOCKING = (0 != strcasecmp(c, "0"));
 
+  if (NULL != (c = getenv("LIBUNACCEPT_OPENLOG")))
+    openlog(c, LOG_PID, LOG_DAEMON);
+
   if (NULL != (c = getenv("LIBUNACCEPT_TARPIT_SIZE")))
   {
     if (sscanf(c, "%d", &_LIBUNACCEPT_TARPIT_SIZE) != 1)
