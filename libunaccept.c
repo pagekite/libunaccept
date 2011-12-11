@@ -36,34 +36,34 @@
 int accept(int s, struct sockaddr *addr, socklen_t *addrlen);
 static void _libunaccept_configure(void) __attribute__((constructor));
 
-int (*lua_libc_accept)(int s, struct sockaddr *, socklen_t *);
-int lua_configured = 0;
-int lua_blocking = 0;
-int lua_syslog = 0;
+int (*_libunaccept_libc_accept)(int s, struct sockaddr *, socklen_t *);
+int _libunaccept_configured = 0;
+int _libunaccept_blocking = 0;
+int _libunaccept_syslog = 0;
 
 /* Rules variables */
-int LUA_MAX_RULES = 100;
-struct lua_rule {
+int _LIBUNACCEPT_MAX_RULES = 100;
+struct _libunaccept_rule {
   int policy;
   in_addr_t network;
   in_addr_t netmask;
   char *hostname;
-} *lua_rules;
-int lua_num_rules = 0;
-char *lua_config = "/etc/libunaccept.d";
-time_t lua_rules_mtime = 0;
+} *_libunaccept_rules;
+int _libunaccept_num_rules = 0;
+char *_libunaccept_config = "/etc/libunaccept.d";
+time_t _libunaccept_rules_mtime = 0;
 
 /* Tarpitting variables*/
-int LUA_TARPIT_SIZE = 100;
-int *lua_tarpit = NULL;
-int lua_num_tarpit = 0;
+int _LIBUNACCEPT_TARPIT_SIZE = 100;
+int *_libunaccept_tarpit = NULL;
+int _libunaccept_num_tarpit = 0;
 
 
 int _libunaccept_log(int priority, const char *format, ...)
 {
   va_list args;
   va_start(args, format);
-  if (lua_syslog) {
+  if (_libunaccept_syslog) {
     vsyslog(priority, format, args);
   } else {
     vfprintf(stderr, format, args);
@@ -76,30 +76,30 @@ int _libunaccept_resize_tarpit(int size)
 {
   int i;
 
-  if (size == LUA_TARPIT_SIZE) return 1;
+  if (size == _LIBUNACCEPT_TARPIT_SIZE) return 1;
 
-  if (lua_tarpit != NULL)
+  if (_libunaccept_tarpit != NULL)
   {
-    for (i = 0; i < LUA_TARPIT_SIZE; i++)
+    for (i = 0; i < _LIBUNACCEPT_TARPIT_SIZE; i++)
     {
-      if (lua_tarpit[i])
-        close(lua_tarpit[i]);
+      if (_libunaccept_tarpit[i])
+        close(_libunaccept_tarpit[i]);
     }
-    free(lua_tarpit);
-    lua_tarpit = NULL;
+    free(_libunaccept_tarpit);
+    _libunaccept_tarpit = NULL;
   }
 
-  LUA_TARPIT_SIZE = size;
-  if (LUA_TARPIT_SIZE > 0)
+  _LIBUNACCEPT_TARPIT_SIZE = size;
+  if (_LIBUNACCEPT_TARPIT_SIZE > 0)
   {
-    if (NULL == (lua_tarpit = malloc(LUA_TARPIT_SIZE * sizeof(int))))
+    if (NULL == (_libunaccept_tarpit = malloc(_LIBUNACCEPT_TARPIT_SIZE * sizeof(int))))
     {
       _libunaccept_log(LOG_ERR,
                        "libunaccept: malloc() failed: %s",
                        strerror(errno));
       return 0;
     }
-    memset(lua_tarpit, 0, LUA_TARPIT_SIZE * sizeof(int));
+    memset(_libunaccept_tarpit, 0, _LIBUNACCEPT_TARPIT_SIZE * sizeof(int));
   }
   return 1;
 }
@@ -107,29 +107,29 @@ int _libunaccept_resize_tarpit(int size)
 int _libunaccept_resize_rules(int size)
 {
   int i;
-  struct lua_rule *new_rules;
+  struct _libunaccept_rule *new_rules;
 
-  if (size == LUA_MAX_RULES) return 1;
+  if (size == _LIBUNACCEPT_MAX_RULES) return 1;
 
-  if (NULL == (new_rules = malloc(size * sizeof(struct lua_rule))))
+  if (NULL == (new_rules = malloc(size * sizeof(struct _libunaccept_rule))))
   {
     _libunaccept_log(LOG_ERR,
                      "libunaccept: malloc() failed: %s",
                      strerror(errno));
     return 0;
   }
-  if (new_rules && lua_rules)
+  if (new_rules && _libunaccept_rules)
   {
-    for (i = 0; i < lua_num_rules; i++)
+    for (i = 0; i < _libunaccept_num_rules; i++)
     {
-       if (lua_rules[i].hostname)
-         free(lua_rules[i].hostname);
+       if (_libunaccept_rules[i].hostname)
+         free(_libunaccept_rules[i].hostname);
     }
-    free(lua_rules);
+    free(_libunaccept_rules);
   }
-  lua_num_rules = 0;
-  lua_rules = new_rules;
-  LUA_MAX_RULES = size;
+  _libunaccept_num_rules = 0;
+  _libunaccept_rules = new_rules;
+  _LIBUNACCEPT_MAX_RULES = size;
   return 1;
 }
 
@@ -141,28 +141,28 @@ static void _libunaccept_configure()
   {
     _libunaccept_log(LOG_NOTICE,
                      "libunaccept: warning: UNACCEPT_RULES unset, using %s!",
-                     lua_config);
+                     _libunaccept_config);
   }
   else
   {
-    lua_config = c;
+    _libunaccept_config = c;
   }
 
   if (NULL != (c = getenv("UNACCEPT_BLOCKING")))
-    lua_blocking = (0 != strcasecmp(c, "0"));
+    _libunaccept_blocking = (0 != strcasecmp(c, "0"));
 
   if (NULL != (c = getenv("UNACCEPT_TARPIT_SIZE")))
   {
-    if (sscanf(c, "%d", &LUA_TARPIT_SIZE) != 1)
+    if (sscanf(c, "%d", &_LIBUNACCEPT_TARPIT_SIZE) != 1)
     {
       _libunaccept_log(LOG_ERR,
                        "libunaccept: FATAL: Bad UNACCEPT_TARPIT_SIZE: %s", c);
       exit(1);
     }
   }
-  _libunaccept_resize_tarpit(LUA_TARPIT_SIZE);
+  _libunaccept_resize_tarpit(_LIBUNACCEPT_TARPIT_SIZE);
 
-  *(void **)(&lua_libc_accept) = dlsym(RTLD_NEXT, "accept");
+  *(void **)(&_libunaccept_libc_accept) = dlsym(RTLD_NEXT, "accept");
   if (dlerror())
   {
     _libunaccept_log(LOG_ERR,
@@ -170,7 +170,7 @@ static void _libunaccept_configure()
     exit(1);
   }
 
-  lua_configured = 1;
+  _libunaccept_configured = 1;
 }
 
 int _libunaccept_strtopolicy(char *s)
@@ -209,12 +209,12 @@ void _libunaccept_load_rules(unsigned short port)
   int num_rules_last = 0;
 
   /* Make sure our rulefile or ruledir exists */
-  if (stat(lua_config, &filestat) < 0)
+  if (stat(_libunaccept_config, &filestat) < 0)
   {
     _libunaccept_log(LOG_WARNING,
                      "libunaccept: failed to stat(%s): %s",
                      fn, strerror(errno));
-    lua_num_rules = 0;
+    _libunaccept_num_rules = 0;
     return;
   }
 
@@ -223,11 +223,11 @@ void _libunaccept_load_rules(unsigned short port)
   if (S_ISDIR(filestat.st_mode))
   {
     /* First, look for a file named port_<PORTNUM>.rc */
-    snprintf(fn, sizeof(fn)-1, "%s/port_%hu.rc", lua_config, port);
+    snprintf(fn, sizeof(fn)-1, "%s/port_%hu.rc", _libunaccept_config, port);
 
     if (stat(fn, &filestat) < 0)
       /* If it does not exist, look for default.rc */
-      snprintf(fn, sizeof(fn)-1, "%s/default.rc", lua_config);
+      snprintf(fn, sizeof(fn)-1, "%s/default.rc", _libunaccept_config);
 
     if (stat(fn, &filestat) < 0)
     {
@@ -235,18 +235,18 @@ void _libunaccept_load_rules(unsigned short port)
       _libunaccept_log(LOG_WARNING,
                        "libunaccept: failed to stat(%s): %s",
                        fn, strerror(errno));
-      lua_num_rules = 0;
+      _libunaccept_num_rules = 0;
       return;
     }
   }
   else
   {
-    /* Otherwise, treat the lua_config as a file. */
-    strncpy(fn, lua_config, sizeof(fn)-1);
+    /* Otherwise, treat the _libunaccept_config as a file. */
+    strncpy(fn, _libunaccept_config, sizeof(fn)-1);
   }
 
   /* Short circuit if nothing has changed. */
-  if (filestat.st_mtime == lua_rules_mtime) return;
+  if (filestat.st_mtime == _libunaccept_rules_mtime) return;
 
   if (NULL == (fd = fopen(fn, "r")))
   {
@@ -257,7 +257,7 @@ void _libunaccept_load_rules(unsigned short port)
   }
   else
   {
-    lines = lua_num_rules = 0;
+    lines = _libunaccept_num_rules = 0;
 
     /* Resize the rules DB to roughly match the size of the config file.
      *
@@ -272,7 +272,7 @@ void _libunaccept_load_rules(unsigned short port)
       lines++;
       if (*line == '#' || *line == '\0' || *line == '\n') continue;
 
-      num_rules_last = lua_num_rules;
+      num_rules_last = _libunaccept_num_rules;
       if (2 == sscanf(line, "%s %s %s", first, second, third))
       {
         if (0 == strcasecmp(first, "tarpit_size") &&
@@ -284,31 +284,31 @@ void _libunaccept_load_rules(unsigned short port)
         else if (0 == strcasecmp(first, "blocking") &&
                  ((value = strtol(second, NULL, 10)) || (!errno)))
         {
-          lua_blocking = value;
+          _libunaccept_blocking = value;
           continue;
         }
         else if (0 == strcasecmp(first, "syslog") &&
                  ((value = strtol(second, NULL, 10)) || (!errno)))
         {
-          lua_syslog = value;
+          _libunaccept_syslog = value;
           continue;
         }
         else if ((value = _libunaccept_strtopolicy(first)) & BY_HOST)
         {
-          if (lua_rules[lua_num_rules].hostname = malloc(1+strlen(second)))
+          if (_libunaccept_rules[_libunaccept_num_rules].hostname = malloc(1+strlen(second)))
           {
-            strcpy(lua_rules[lua_num_rules].hostname, second);
-            lua_rules[lua_num_rules++].policy = value;
+            strcpy(_libunaccept_rules[_libunaccept_num_rules].hostname, second);
+            _libunaccept_rules[_libunaccept_num_rules++].policy = value;
           }
         }
       }
       else if (3 == sscanf(line, "%s %s %s %s", first, second, third, fourth))
       {
-        if (lua_num_rules >= LUA_MAX_RULES)
+        if (_libunaccept_num_rules >= _LIBUNACCEPT_MAX_RULES)
         {
           _libunaccept_log(LOG_WARNING,
                            "libunaccept: Line %d, too many rules!  Max is %d.",
-                           lines, LUA_MAX_RULES);
+                           lines, _LIBUNACCEPT_MAX_RULES);
           fclose(fd);
           return;
         }
@@ -316,22 +316,22 @@ void _libunaccept_load_rules(unsigned short port)
             inet_aton(third,  &netmask) &&
             ((network.s_addr & netmask.s_addr) == network.s_addr))
         {
-          lua_rules[lua_num_rules].network = network.s_addr;
-          lua_rules[lua_num_rules].netmask = netmask.s_addr;
-          lua_rules[lua_num_rules].hostname = NULL;
-          if (lua_rules[lua_num_rules].policy = _libunaccept_strtopolicy(first))
-            lua_num_rules++;
+          _libunaccept_rules[_libunaccept_num_rules].network = network.s_addr;
+          _libunaccept_rules[_libunaccept_num_rules].netmask = netmask.s_addr;
+          _libunaccept_rules[_libunaccept_num_rules].hostname = NULL;
+          if (_libunaccept_rules[_libunaccept_num_rules].policy = _libunaccept_strtopolicy(first))
+            _libunaccept_num_rules++;
         }
       }
 
-      if (num_rules_last == lua_num_rules)
+      if (num_rules_last == _libunaccept_num_rules)
       {
         _libunaccept_log(LOG_WARNING,
                          "libunaccept: Line %d, invalid rule: %s", lines, line);
       }
     }
     fclose(fd);
-    lua_rules_mtime = filestat.st_mtime;
+    _libunaccept_rules_mtime = filestat.st_mtime;
   }
 
   _libunaccept_log(LOG_NOTICE, "libunaccept: configured from %s", fn);
@@ -350,28 +350,28 @@ int accept(int s, struct sockaddr *addr, socklen_t *addrlen)
   int got_hinfo;
   int i;
 
-  if (!lua_configured) _libunaccept_configure();
+  if (!_libunaccept_configured) _libunaccept_configure();
 
   nullinfo.h_name = "no-reverse-dns";
   unsetinfo.h_name = "<unset>";
   do
   {
-    res = (*lua_libc_accept)(s, addr, addrlen);
+    res = (*_libunaccept_libc_accept)(s, addr, addrlen);
     if ((res <= 0) || (addr->sa_family != AF_INET)) return res;
 
     our_end_len = sizeof(our_end);
     getsockname(s, &our_end, &our_end_len);
     _libunaccept_load_rules(ntohs(our_end.sin_port));
 
-    if (lua_num_rules < 1) return res;
+    if (_libunaccept_num_rules < 1) return res;
 
     sin = (struct sockaddr_in *) addr;
     hinfo = &unsetinfo;
     got_hinfo = 0;
-    for (i = 0; i < lua_num_rules; i++)
+    for (i = 0; i < _libunaccept_num_rules; i++)
     {
       match = 0;
-      if (lua_rules[i].policy & BY_HOST)
+      if (_libunaccept_rules[i].policy & BY_HOST)
       {
         if (!got_hinfo)
         {
@@ -381,26 +381,26 @@ int accept(int s, struct sockaddr *addr, socklen_t *addrlen)
           if (hinfo == NULL)
             hinfo = &nullinfo;
         }
-        match = (NULL != strcasestr(hinfo->h_name, lua_rules[i].hostname));
+        match = (NULL != strcasestr(hinfo->h_name, _libunaccept_rules[i].hostname));
       }
       else
       {
-        match = ((sin->sin_addr.s_addr & lua_rules[i].netmask) == lua_rules[i].network);
+        match = ((sin->sin_addr.s_addr & _libunaccept_rules[i].netmask) == _libunaccept_rules[i].network);
       }
 
       if (match)
       {
-        if (lua_rules[i].policy & ALLOW)
+        if (_libunaccept_rules[i].policy & ALLOW)
         {
-          if ((lua_rules[i].policy & VERBOSE) || (lua_syslog > 1))
+          if ((_libunaccept_rules[i].policy & VERBOSE) || (_libunaccept_syslog > 1))
             _libunaccept_log(LOG_INFO,
                              "libunaccept: Connect from %s/%s allowed, rule %d.",
                              inet_ntoa(sin->sin_addr.s_addr), hinfo->h_name, i);
           break;
         }
-        else if (lua_rules[i].policy & DENY)
+        else if (_libunaccept_rules[i].policy & DENY)
         {
-          if ((lua_rules[i].policy & VERBOSE) || (lua_syslog > 1))
+          if ((_libunaccept_rules[i].policy & VERBOSE) || (_libunaccept_syslog > 1))
             _libunaccept_log(LOG_INFO,
                              "libunaccept: Connect from %s/%s denied, rule %d.",
                              inet_ntoa(sin->sin_addr.s_addr), hinfo->h_name, i);
@@ -409,19 +409,19 @@ int accept(int s, struct sockaddr *addr, socklen_t *addrlen)
           res = -1;
           break;
         }
-        else if (lua_rules[i].policy & TARPIT)
+        else if (_libunaccept_rules[i].policy & TARPIT)
         {
-          if ((lua_rules[i].policy & VERBOSE) || (lua_syslog > 1))
+          if ((_libunaccept_rules[i].policy & VERBOSE) || (_libunaccept_syslog > 1))
             _libunaccept_log(LOG_INFO,
                              "libunaccept: Connect from %s/%s tarpitted, rule %d.",
                              inet_ntoa(sin->sin_addr.s_addr), hinfo->h_name, i);
 
-          /* Tarpitting is simple: we just keep up to LUA_TARPIT_SIZE
+          /* Tarpitting is simple: we just keep up to _LIBUNACCEPT_TARPIT_SIZE
            * victims open at a time, but otherwise ignore them. */
-          if (lua_tarpit[lua_num_tarpit]) close(lua_tarpit[lua_num_tarpit]);
-          lua_tarpit[lua_num_tarpit] = res;
-          lua_num_tarpit += 1;
-          lua_num_tarpit %= LUA_TARPIT_SIZE;
+          if (_libunaccept_tarpit[_libunaccept_num_tarpit]) close(_libunaccept_tarpit[_libunaccept_num_tarpit]);
+          _libunaccept_tarpit[_libunaccept_num_tarpit] = res;
+          _libunaccept_num_tarpit += 1;
+          _libunaccept_num_tarpit %= _LIBUNACCEPT_TARPIT_SIZE;
           errno = ECONNABORTED;
           res = -1;
           break;
@@ -435,7 +435,7 @@ int accept(int s, struct sockaddr *addr, socklen_t *addrlen)
      * mode, that means accept() again, if not blocking return to the app.
      */
   }
-  while (lua_blocking && (res < 0));
+  while (_libunaccept_blocking && (res < 0));
 
   return res;
 }
