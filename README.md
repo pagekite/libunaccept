@@ -170,7 +170,7 @@ is "thread safe enough". :-)
 Originally written in 2006 but never released, `libunaccept`, was resurrected
 from obscurity for DDoS management at [PageKite](https://pagekite.net/) and
 as an experimental spam reduction tool for the author's personal SMTP server
-([blog post](http://bre.klaki.net/blog/2011/12/11)).
+([blog post](http://bre.klaki.net/blog/2011/12/09/)).
 
 If you use `libunaccept` for something neat, let us know and we'll add a
 link to this document.
