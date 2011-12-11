@@ -38,11 +38,11 @@ static void _libunaccept_configure(void) __attribute__((constructor));
 
 int (*_libunaccept_libc_accept)(int s, struct sockaddr *, socklen_t *);
 int _libunaccept_configured = 0;
-int _libunaccept_blocking = 0;
+int _LIBUNACCEPT_BLOCKING = 0;
 int _libunaccept_syslog = 0;
 
 /* Rules variables */
-int _LIBUNACCEPT_MAX_RULES = 100;
+int _libunaccept_max_rules = 100;
 struct _libunaccept_rule {
   int policy;
   in_addr_t network;
@@ -50,7 +50,8 @@ struct _libunaccept_rule {
   char *hostname;
 } *_libunaccept_rules;
 int _libunaccept_num_rules = 0;
-char *_libunaccept_config = "/etc/libunaccept.d";
+int _libunaccept_rules_lock = 0;
+char *_LIBUNACCEPT_RULES = "/etc/libunaccept.d";
 time_t _libunaccept_rules_mtime = 0;
 
 /* Tarpitting variables*/
@@ -64,7 +65,7 @@ int _libunaccept_log(int priority, const char *format, ...)
   va_list args;
   va_start(args, format);
   if (_libunaccept_syslog) {
-    vsyslog(priority, format, args);
+    if (_libunaccept_syslog > 0) vsyslog(priority, format, args);
   } else {
     vfprintf(stderr, format, args);
     fprintf(stderr, "\n");
@@ -109,7 +110,7 @@ int _libunaccept_resize_rules(int size)
   int i;
   struct _libunaccept_rule *new_rules;
 
-  if (size == _LIBUNACCEPT_MAX_RULES) return 1;
+  if (size == _libunaccept_max_rules) return 1;
 
   if (NULL == (new_rules = malloc(size * sizeof(struct _libunaccept_rule))))
   {
@@ -129,7 +130,7 @@ int _libunaccept_resize_rules(int size)
   }
   _libunaccept_num_rules = 0;
   _libunaccept_rules = new_rules;
-  _LIBUNACCEPT_MAX_RULES = size;
+  _libunaccept_max_rules = size;
   return 1;
 }
 
@@ -137,26 +138,32 @@ static void _libunaccept_configure()
 {
   char *c;
 
-  if ((NULL == (c = getenv("UNACCEPT_RULES"))) || (*c == '\0'))
+  /* Note: We have a miniscule race condition here if two threads decide
+   * to configure at the exact same time. But if they do, it *should* still
+   * be harmless, aside from a potential tarpit buffer memory leak.
+   */
+  if (_libunaccept_configured) return;
+
+  if ((NULL == (c = getenv("LIBUNACCEPT_RULES"))) || (*c == '\0'))
   {
     _libunaccept_log(LOG_NOTICE,
-                     "libunaccept: warning: UNACCEPT_RULES unset, using %s!",
-                     _libunaccept_config);
+                     "libunaccept: warning: LIBUNACCEPT_RULES unset, using %s!",
+                     _LIBUNACCEPT_RULES);
   }
   else
   {
-    _libunaccept_config = c;
+    _LIBUNACCEPT_RULES = c;
   }
 
-  if (NULL != (c = getenv("UNACCEPT_BLOCKING")))
-    _libunaccept_blocking = (0 != strcasecmp(c, "0"));
+  if (NULL != (c = getenv("LIBUNACCEPT_BLOCKING")))
+    _LIBUNACCEPT_BLOCKING = (0 != strcasecmp(c, "0"));
 
-  if (NULL != (c = getenv("UNACCEPT_TARPIT_SIZE")))
+  if (NULL != (c = getenv("LIBUNACCEPT_TARPIT_SIZE")))
   {
     if (sscanf(c, "%d", &_LIBUNACCEPT_TARPIT_SIZE) != 1)
     {
       _libunaccept_log(LOG_ERR,
-                       "libunaccept: FATAL: Bad UNACCEPT_TARPIT_SIZE: %s", c);
+                       "libunaccept: FATAL: Bad LIBUNACCEPT_TARPIT_SIZE: %s", c);
       exit(1);
     }
   }
@@ -208,13 +215,19 @@ void _libunaccept_load_rules(unsigned short port)
   int value;
   int num_rules_last = 0;
 
+  /* FIXME: We have a bit of a race condition here... */
+  if (++_libunaccept_rules_lock != 1) {
+    _libunaccept_rules_lock--;
+    return;
+  }
+
   /* Make sure our rulefile or ruledir exists */
-  if (stat(_libunaccept_config, &filestat) < 0)
+  if (stat(_LIBUNACCEPT_RULES, &filestat) < 0)
   {
     _libunaccept_log(LOG_WARNING,
                      "libunaccept: failed to stat(%s): %s",
                      fn, strerror(errno));
-    _libunaccept_num_rules = 0;
+    _libunaccept_rules_lock--;
     return;
   }
 
@@ -223,11 +236,11 @@ void _libunaccept_load_rules(unsigned short port)
   if (S_ISDIR(filestat.st_mode))
   {
     /* First, look for a file named port_<PORTNUM>.rc */
-    snprintf(fn, sizeof(fn)-1, "%s/port_%hu.rc", _libunaccept_config, port);
+    snprintf(fn, sizeof(fn)-1, "%s/port_%hu.rc", _LIBUNACCEPT_RULES, port);
 
     if (stat(fn, &filestat) < 0)
       /* If it does not exist, look for default.rc */
-      snprintf(fn, sizeof(fn)-1, "%s/default.rc", _libunaccept_config);
+      snprintf(fn, sizeof(fn)-1, "%s/default.rc", _LIBUNACCEPT_RULES);
 
     if (stat(fn, &filestat) < 0)
     {
@@ -235,14 +248,14 @@ void _libunaccept_load_rules(unsigned short port)
       _libunaccept_log(LOG_WARNING,
                        "libunaccept: failed to stat(%s): %s",
                        fn, strerror(errno));
-      _libunaccept_num_rules = 0;
+      _libunaccept_rules_lock--;
       return;
     }
   }
   else
   {
-    /* Otherwise, treat the _libunaccept_config as a file. */
-    strncpy(fn, _libunaccept_config, sizeof(fn)-1);
+    /* Otherwise, treat the _LIBUNACCEPT_RULES as a file. */
+    strncpy(fn, _LIBUNACCEPT_RULES, sizeof(fn)-1);
   }
 
   /* Short circuit if nothing has changed. */
@@ -253,6 +266,7 @@ void _libunaccept_load_rules(unsigned short port)
     _libunaccept_log(LOG_ERR,
                      "libunaccept: failed to open %s: %s",
                      fn, strerror(errno));
+    _libunaccept_rules_lock--;
     return;
   }
   else
@@ -265,7 +279,10 @@ void _libunaccept_load_rules(unsigned short port)
      * which is the shortest possible rule at the moment.
      */
     if (!_libunaccept_resize_rules(filestat.st_size / 11))
+    {
+      _libunaccept_rules_lock--;
       return;
+    }
 
     while (NULL != fgets(line, 79, fd))
     {
@@ -284,7 +301,7 @@ void _libunaccept_load_rules(unsigned short port)
         else if (0 == strcasecmp(first, "blocking") &&
                  ((value = strtol(second, NULL, 10)) || (!errno)))
         {
-          _libunaccept_blocking = value;
+          _LIBUNACCEPT_BLOCKING = value;
           continue;
         }
         else if (0 == strcasecmp(first, "syslog") &&
@@ -304,12 +321,13 @@ void _libunaccept_load_rules(unsigned short port)
       }
       else if (3 == sscanf(line, "%s %s %s %s", first, second, third, fourth))
       {
-        if (_libunaccept_num_rules >= _LIBUNACCEPT_MAX_RULES)
+        if (_libunaccept_num_rules >= _libunaccept_max_rules)
         {
           _libunaccept_log(LOG_WARNING,
                            "libunaccept: Line %d, too many rules!  Max is %d.",
-                           lines, _LIBUNACCEPT_MAX_RULES);
+                           lines, _libunaccept_max_rules);
           fclose(fd);
+          _libunaccept_rules_lock--;
           return;
         }
         if (inet_aton(second, &network) &&
@@ -335,6 +353,7 @@ void _libunaccept_load_rules(unsigned short port)
   }
 
   _libunaccept_log(LOG_NOTICE, "libunaccept: configured from %s", fn);
+  _libunaccept_rules_lock--;
 }
 
 int accept(int s, struct sockaddr *addr, socklen_t *addrlen)
@@ -435,7 +454,7 @@ int accept(int s, struct sockaddr *addr, socklen_t *addrlen)
      * mode, that means accept() again, if not blocking return to the app.
      */
   }
-  while (_libunaccept_blocking && (res < 0));
+  while (_LIBUNACCEPT_BLOCKING && (res < 0));
 
   return res;
 }
