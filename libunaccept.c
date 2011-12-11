@@ -189,10 +189,10 @@ int _libunaccept_strtopolicy(char *s)
   return policy;
 }
 
-void _libunaccept_load_rules()
+void _libunaccept_load_rules(unsigned short port)
 {
   FILE *fd;
-  char line[80], first[80], second[80], third[80], fourth[80];
+  char fn[80], line[80], first[80], second[80], third[80], fourth[80];
   struct in_addr network;
   struct in_addr netmask;
   struct stat filestat;
@@ -201,21 +201,34 @@ void _libunaccept_load_rules()
   int value;
   int num_rules_last = 0;
 
-  if (stat(lua_rulefile, &filestat) < 0)
+  /* Try the default rc file with -NN appended first... */
+  snprintf(fn, 79, "%s.%hu", lua_rulefile, port);
+  if (stat(fn, &filestat) < 0)
   {
     _libunaccept_log(LOG_WARNING,
                      "libunaccept: failed to stat(%s): %s",
-                     lua_rulefile, strerror(errno));
-    lua_num_rules = 0;
-    return;
+                     fn, strerror(errno));
+
+    /* If that fails, just try the default rc file */
+    strcpy(fn, lua_rulefile);
+    if (stat(fn, &filestat) < 0)
+    {
+      _libunaccept_log(LOG_WARNING,
+                       "libunaccept: failed to stat(%s): %s",
+                       fn, strerror(errno));
+      lua_num_rules = 0;
+      return;
+    }
   }
 
   /* Short circuit if nothing has changed. */
   if (filestat.st_mtime == lua_rules_mtime) return;
 
-  if (NULL == (fd = fopen(lua_rulefile, "r")))
+  if (NULL == (fd = fopen(fn, "r")))
   {
-    perror("libunaccept: failed to open UNACCEPT_RULES file");
+    _libunaccept_log(LOG_ERR,
+                     "libunaccept: failed to open %s: %s",
+                     fn, strerror(errno));
     return;
   }
   else
@@ -297,14 +310,16 @@ void _libunaccept_load_rules()
     lua_rules_mtime = filestat.st_mtime;
   }
 
-  _libunaccept_log(LOG_NOTICE, "libunaccept: configured from %s", lua_rulefile);
+  _libunaccept_log(LOG_NOTICE, "libunaccept: configured from %s", fn);
 }
 
 int accept(int s, struct sockaddr *addr, socklen_t *addrlen)
 {
   struct sockaddr_in *sin;
+  struct sockaddr_in our_end;
   struct hostent *hinfo;
   struct hostent nullinfo, unsetinfo;
+  socklen_t our_end_len;
   char *addr_str;
   int res;
   int match;
@@ -317,19 +332,20 @@ int accept(int s, struct sockaddr *addr, socklen_t *addrlen)
   unsetinfo.h_name = "<unset>";
   do
   {
-    _libunaccept_load_rules();
-
     res = (*lua_libc_accept)(s, addr, addrlen);
+    if ((res <= 0) || (addr->sa_family != AF_INET)) return res;
 
-    if ((res <= 0) || (lua_num_rules < 1) || (addr->sa_family != AF_INET))
-      return res;
+    our_end_len = sizeof(our_end);
+    getsockname(s, &our_end, &our_end_len);
+    _libunaccept_load_rules(ntohs(our_end.sin_port));
 
+    if (lua_num_rules < 1) return res;
+
+    sin = (struct sockaddr_in *) addr;
     hinfo = &unsetinfo;
     got_hinfo = 0;
     for (i = 0; i < lua_num_rules; i++)
     {
-      sin = (struct sockaddr_in *) addr;
-
       match = 0;
       if (lua_rules[i].policy & BY_HOST)
       {
