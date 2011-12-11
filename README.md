@@ -44,11 +44,11 @@ On modern RedHat or Fedora distributions, most packages will work if you
 add those lines to a file named `/etc/sysconfig/SERVICE`.
 
 
-## Related projects ##
+## History and Related Projects ##
 
-`Libunaccept` is beening resurrected from obscurity for use as a DDoS
-management system at [PageKite](https://pagekite.net/) and an experimental
-spam reduction tool for the author's personal SMTP server
+Originally written in 2006 but never released, `libunaccept`, was resurrected
+from obscurity for DDoS management at [PageKite](https://pagekite.net/) and
+as an experimental spam reduction tool for the author's personal SMTP server
 ([blog post](http://bre.klaki.net/blog/2011/12/11)).
 
 If you use `libunaccept` for something neat, let us know and we'll add a
