@@ -93,7 +93,8 @@ helps if the `accept()` call takes place in a long-lived process.
 
 `Libunaccept` policies should be familiar to anyone used to configuring a
 firewall.  They are simply a list of rules which are checked in order; the
-first rule that matches is applied and processing is finished.
+first rule that matches is applied and processing is finished.  If no rules
+match, the connection is accepted.
 
 In `libunaccept` a rule consists of a condition and a policy.  The current
 policies are:
