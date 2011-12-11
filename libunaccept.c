@@ -87,7 +87,9 @@ int _libunaccept_resize_tarpit(int size)
   {
     if (NULL == (lua_tarpit = malloc(LUA_TARPIT_SIZE * sizeof(int))))
     {
-      perror("libunaccept: malloc() failed");
+      _libunaccept_log(LOG_ERR,
+                       "libunaccept: malloc() failed: %s",
+                       strerror(errno));
       return 0;
     }
     memset(lua_tarpit, 0, LUA_TARPIT_SIZE * sizeof(int));
@@ -104,7 +106,9 @@ int _libunaccept_resize_rules(int size)
 
   if (NULL == (new_rules = malloc(size * sizeof(struct lua_rule))))
   {
-    perror("libunaccept: malloc() failed");
+    _libunaccept_log(LOG_ERR,
+                     "libunaccept: malloc() failed: %s",
+                     strerror(errno));
     return 0;
   }
   if (new_rules && lua_rules)
@@ -129,7 +133,7 @@ static void _libunaccept_configure()
   if ((NULL == (c = getenv("UNACCEPT_RULES"))) || (*c == '\0'))
   {
     _libunaccept_log(LOG_NOTICE,
-                     "libunaccept: Note, UNACCEPT_RULES unset, using %s!",
+                     "libunaccept: warning: UNACCEPT_RULES unset, using %s!",
                      lua_rulefile);
   }
   else
@@ -145,7 +149,7 @@ static void _libunaccept_configure()
     if (sscanf(c, "%d", &LUA_TARPIT_SIZE) != 1)
     {
       _libunaccept_log(LOG_ERR,
-                       "libunaccept: fatal: Bad UNACCEPT_TARPIT_SIZE: %s", c);
+                       "libunaccept: FATAL: Bad UNACCEPT_TARPIT_SIZE: %s", c);
       exit(1);
     }
   }
@@ -155,7 +159,7 @@ static void _libunaccept_configure()
   if (dlerror())
   {
     _libunaccept_log(LOG_ERR,
-                     "libunaccept: fatal: Couldn't find original accept()!\n");
+                     "libunaccept: FATAL: Couldn't find original accept()!\n");
     exit(1);
   }
 
