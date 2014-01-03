@@ -220,6 +220,8 @@ void _libunaccept_load_rules(unsigned short port)
 
   /* FIXME: We have a bit of a race condition here... */
   if (++_libunaccept_rules_lock != 1) {
+    _libunaccept_log(LOG_WARNING, "libunaccept: rules are locked: %d",
+                                  _libunaccept_rules_lock);
     _libunaccept_rules_lock--;
     return;
   }
@@ -262,7 +264,10 @@ void _libunaccept_load_rules(unsigned short port)
   }
 
   /* Short circuit if nothing has changed. */
-  if (filestat.st_mtime == _libunaccept_rules_mtime) return;
+  if (filestat.st_mtime == _libunaccept_rules_mtime) {
+    _libunaccept_rules_lock--;
+    return;
+  }
 
   if (NULL == (fd = fopen(fn, "r")))
   {
@@ -355,8 +360,10 @@ void _libunaccept_load_rules(unsigned short port)
     _libunaccept_rules_mtime = filestat.st_mtime;
   }
 
-  _libunaccept_log(LOG_NOTICE, "libunaccept: configured from %s", fn);
   _libunaccept_rules_lock--;
+  _libunaccept_log(LOG_NOTICE,
+                   "libunaccept: configured from %s, rules=%d, lock=%d",
+                   fn, _libunaccept_num_rules, _libunaccept_rules_lock);
 }
 
 int accept(int s, struct sockaddr *addr, socklen_t *addrlen)
